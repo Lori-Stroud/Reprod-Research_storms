@@ -8,9 +8,11 @@
 
 library(data.table)
 library(R.utils)
+library(lubridate)
+library(ggplot2)
+
 
 # Load the data ####
-
 data.file <- "data/repdata_data_StormData.csv.bz2"
 
 if (!file.exists(data.file)) {
@@ -21,8 +23,10 @@ bunzip2(data.file, destname = "temp.csv", remove = FALSE)
 data <- fread("temp.csv", sep = ",", stringsAsFactors = FALSE)
 file.remove("temp.csv")
 
-# Clean the event names ####
+# Convert dates with lubridate
+data$BGN_DATE <- mdy_hms(data$BGN_DATE)
 
+# Clean the event names ####
 # the following grep commands re-maps some of the more frequent "misspelled" events.
 # For example, "TSTM WIND" is assumed to be a "Thunderstorm Wind".
 
@@ -93,29 +97,120 @@ data[grep("frost|freeze",
 # see also the Severe weather terminology at :
 # http://en.wikipedia.org/wiki/Severe_weather_terminology_%28United_States%29
 
-# Subset the data considering only valid event names ####
-# list of valid event names is assumed to be in "event types.txt" file
 
-valid.events <- fread("event types.txt")$EVTYPE  # load valid event names
+# Subset the data ####
+# - only subset valid event names
+# - only consider variables of interest : event type, date, injuries/fatalities, and damages
+# - we clean the damage variables on the fly with the function cleanDamage()
 
-storm.data     <- data[tolower(EVTYPE) %in% tolower(valid.events),]  # subset
-# discarded.data <- data[ !(tolower(EVTYPE) %in% tolower(base.events)),]
+cleanDamage <- function(dammage,attribute) {
+  # returns the dammage in $ taking into account its attribute which can be :
+  # h = hundred, k = thousand, m = million, b = billion
+  # or a digit n considered as a factor 10^n
+  # if attribute is empty to assume a factor 1
+  #
+  # args: 
+  #   - dammage   : numeric, the dammage values (here PROPDMG or CROPDMG)
+  #   - attribute : character, the dammage attribute (here PROPDMGEXP or CROPDMGEXP)
+  #
+  # Returns: the dammage in dollar
+  #
+  # Exemple : for dammage = 2 and attribute = "k", returns the numeric value 2000.
+  
+  attribute <- gsub("[hH]","2",attribute)
+  attribute <- gsub("[kK]","3",attribute)
+  attribute <- gsub("[mM]","6",attribute)
+  attribute <- gsub("[bB]","9",attribute)
+  attribute <- gsub("^$","0",attribute)
+  dammage*10^as.numeric(attribute)
+}
+
+valid.events <- fread("event types.txt")$EVTYPE  # load list of valid event names
+storm.data   <- data[tolower(EVTYPE) %in% tolower(valid.events),
+                     list(event    = EVTYPE,
+                          date     = BGN_DATE,
+                          injuries = INJURIES,
+                          deaths   = FATALITIES,
+                          damage_property = cleanDamage(PROPDMG,PROPDMGEXP),
+                          damage_crop     = cleanDamage(CROPDMG,CROPDMGEXP))]
+
 
 # Analyze the data - part 1 - impact on population health ####
 
-# --> aggregate with AVERAGE and TOTAL injuries/fatalities by event type.
-# --> plot the 10 most harmfull
+health.data <- storm.data[, list(total.injuries = sum(injuries, na.rm = TRUE),
+                                 total.deaths   = sum(deaths, na.rm = TRUE),
+                                 mean.injuries  = mean(injuries, na.rm = TRUE),
+                                 mean.deaths    = mean(deaths, na.rm = TRUE)),
+                                 by = event]
 
+# ORDER BEFORE PICKING THE 5 FIRST !!!!!!
 
+# plot top 5 most harmfull in total death (also plot total injuries)
+top5.health.tot <- melt(health.data[1:5,], "event", c("total.injuries","total.deaths"),
+                        variable.name = "type", value.name = "count")
+setorder(top5.health.tot,-type,-count)
 
+g <- ggplot(top5.health.tot,aes(x = factor(event,levels=event),y = count))
+g <- g + geom_bar(aes(fill = type), position = "dodge", stat="identity")
+g <- g + scale_y_log10()
+g <- g + labs(x = "Type of Event",y = "Count")
+g <- g + ggtitle("Top 5 most hamfull events (according to total number of deaths)")
+g <- g + theme(legend.title=element_blank(),
+               plot.title = element_text(lineheight=.8, face="bold", vjust = 2),
+               axis.text.x = element_text(angle = 45, hjust = 1))
+g <- g + scale_fill_discrete(breaks=c("total.injuries", "total.deaths"),
+                             labels=c("Total injuries", "Total deaths"))
+g
 
+# plot top 5 most harmfull in mean death (also plot mean injuries)
+top5.health.mean <- melt(health.data[1:5,], "event", c("mean.injuries","mean.deaths"),
+                         variable.name = "type", value.name = "count")
+setorder(top5.health.mean,-type,-count)
 
+g <- ggplot(top5.health.mean,aes(x = factor(event,levels=event),y = count))
+g <- g + geom_bar(aes(fill = type), position = "dodge", stat="identity")
+g <- g + labs(x = "Type of Event",y = "Count")
+g <- g + ggtitle("Top 5 most hamfull events (according to average number of deaths)")
+g <- g + theme(legend.title=element_blank(),
+               plot.title = element_text(lineheight=.8, face="bold", vjust = 2),
+               axis.text.x = element_text(angle = 45, hjust = 1))
+g <- g + scale_fill_discrete(breaks=c("mean.injuries", "mean.deaths"),
+                             labels=c("injuries", "deaths"))
+g
 
 # Analyze the data - part 2 - impact on economy ####
 
+eco.data <- storm.data[, list(total.damage_property = sum(damage_property, na.rm = TRUE),
+                              total.damage_crop     = sum(damage_crop, na.rm = TRUE),
+                              mean.damage_property  = mean(damage_property, na.rm = TRUE),
+                              mean.damage_crop      = mean(damage_crop, na.rm = TRUE)),
+                       by = event]
 
-# Bonus : most dangerous place to be during strong event ? ####
+eco.data[,total.damage := total.damage_property + total.damage_crop]
 
+# sort event factor levels with the sum of damages.
+eco.data$event <- as.factor(eco.data$event)
+eco.data$event <- reorder(eco.data$event, -eco.data$total.damage)
+
+# plot top 5 with the greatest economic consequences
+setorder(eco.data,type,-total.damage)
+top5.eco.tot <- melt(eco.data[1:5,], "event", c("total.damage_property","total.damage_crop"),
+                        variable.name = "type", value.name = "cost")
+top5.eco.tot[, total.damage := total.damage_property + total.damage_crop]
+#setorder(top5.eco.tot,type,-cost)
+top5.eco.tot$event <- reorder(top5.eco.tot$event, rowSums(top5.eco.tot[-1]))
+
+g <- ggplot(top5.eco.tot,aes(x = event ,y = cost/1e6))
+g <- g + geom_bar(aes(fill = type), stat="identity")
+g <- g + labs(x = "Type of Event",y = "Damage in Millions of Dollars")
+g <- g + ggtitle("Top 5 events having the greatest economic consequences")
+g <- g + theme(legend.title=element_blank(),
+               plot.title = element_text(lineheight=.8, face="bold", vjust = 2),
+               axis.text.x = element_text(angle = 45, hjust = 1),
+               legend.position="top")
+g <- g + scale_fill_discrete(breaks=c("total.damage_property", "total.damage_crop"),
+                             labels=c("Property damages", "Crop damages"))
+g
 
 
 # look at the more important discarded event types :
