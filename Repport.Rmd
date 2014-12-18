@@ -45,7 +45,7 @@ Data processing and analysis were performed using R statistical programming soft
 * Version of Rstudio : 0.98.1074
 * Operating System : Windows 7, SP1, 32 bits
 
-Besides, the following packages ware used : 
+Besides, the following packages were used : 
 
 * data.table, version 1.9.5
 * R.utils, version 1.34.0
@@ -74,7 +74,7 @@ Because the analysis focuses on the impact of storm event on population health a
 * the property damage (PROPDMG, numeric and PROPDMGEXP, character)
 * the crop damage (CROPDMG, numeric and CROPDMGEXP, character)
 
-```{r load data, cache=TRUE}
+```{r load data, cache=TRUE, results= 'hide'}
 data.file <- "data/repdata_data_StormData.csv.bz2"
 if (!file.exists(data.file)) {
   download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",data.file)
@@ -144,7 +144,7 @@ cleanDamage <- function(dammage,attribute) {
   # returns the dammage in $ taking into account its attribute which can be :
   # h = hundred, k = thousand, m = million, b = billion
   # or a digit n considered as a factor 10^n
-  # if attribute is empty to assume a factor 1
+  # if attribute is empty we assume a factor 1
   #
   # args: 
   #   - dammage   : numeric, the dammage values (here PROPDMG or CROPDMG)
@@ -193,7 +193,7 @@ storm.data   <- data[tolower(EVTYPE) %in% tolower(valid.events),
 ## Impact on population health
 
 We first investigate which types of events are most harmful with respect to population health.
-To this end we rank the events according to the total number of deaths (we also look at the total number of injuries) :
+To this end, we choose to **rank the events according to the total number of deaths** (we also compute for information the total number of injuries) :
 
 ```{r health dataset}
 health.data <- storm.data[, list(total.injuries = sum(injuries, na.rm = TRUE),
@@ -225,7 +225,8 @@ g
 ```
 
 The graph above shows the 5 most harmful events with respect to the number of deaths.
-The most harmful storm event is the Tornado, which also display by far the largest total injuries, followed by Heat. Numbers are shown below :
+Total number of injuries is also plotted for comparison.
+**The most harmful storm event is the Tornado**, which also display by far the largest total injuries, followed by Heat. Numbers are shown below :
 
 ```{r health numbers}
 health.data[1:5,]
@@ -255,9 +256,9 @@ eco.data$event <- reorder(eco.data$event, -eco.data$total.damage)
 top5.eco.tot <- melt(eco.data[1:5,], "event", c("total.damage_property","total.damage_crop"),
                         variable.name = "type", value.name = "cost")
 
-g <- ggplot(top5.eco.tot,aes(x = event ,y = cost/1e6))
+g <- ggplot(top5.eco.tot,aes(x = event ,y = cost/1e9))
 g <- g + geom_bar(aes(fill = type), stat="identity")
-g <- g + labs(x = "Type of Event",y = "Damage in Millions of Dollars")
+g <- g + labs(x = "Type of Event",y = "Total damage in Billions of Dollars")
 g <- g + ggtitle("Top 5 events having the greatest economic consequences")
 g <- g + theme(legend.title=element_blank(),
                plot.title = element_text(lineheight=.8, face="bold", vjust = 2),
@@ -268,7 +269,7 @@ g <- g + scale_fill_discrete(breaks=c("total.damage_property", "total.damage_cro
 g
 ```
 
-From the graph above, we see that the event involving the largest cumulative damage is the Hurricane, Followed by tornado and hail. Numbers are shown below :
+From the graph above, we see that **the event involving the largest cumulative damage is the Hurricane**, Followed by tornado and hail. Numbers are shown below :
 
 ```{r economy numbers}
 eco.data[1:5,]
