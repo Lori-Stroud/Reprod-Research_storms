@@ -5,7 +5,7 @@ date: "Thursday, December 18, 2014"
 output:
   html_document:
     keep_md: yes
-  pdf_document: default
+    self_contained: no
 ---
 
 Storm events in the United States : impact on population health and economy
