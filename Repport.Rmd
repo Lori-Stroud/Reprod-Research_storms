@@ -1,15 +1,9 @@
 ---
-title: 'Storm events in the United States : impact on population health and economy'
+title: 'Storm events in the United States from 1950 to 2011 : An analysis of the impact on population health and economy'
 author: "Duf59"
 date: "Thursday, December 18, 2014"
-output:
-  html_document:
-    keep_md: yes
-    self_contained: no
+output: html_document
 ---
-
-Storm events in the United States : impact on population health and economy
-------------------------------------------------------------------------------
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(message = FALSE, warning = FALSE)
@@ -17,7 +11,7 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 
 # synopsis
 
-Storms and other severe weather events can cause both public health and economic problems for communities and municipalitie.
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities.
 Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.  
 
 The present report provides an analysis of storm events in the United States since from 1950 to 2011.
@@ -25,7 +19,7 @@ Data were collected from the U.S. National Oceanic and Atmospheric Administratio
 This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.  
 
 The analysis is focused on the impact of storm events on population health and economy.
-By considering the total number of deaths for each type of event, we highlight the 5 most harmful events with respect to population health. Similarly, by considering the comulative economic damage, we highlight the 5 most harmful events with respect to economy. 
+By considering the total number of deaths for each type of event, we highlight the 5 most harmful events with respect to population health. Similarly, by considering the cumulative economic damage, we highlight the 5 most harmful events with respect to economy. 
 
 The following sections detail the data processing workflow and results.
 
@@ -33,9 +27,9 @@ The following sections detail the data processing workflow and results.
 
 # Data Processing
 
-Data processing was based on the following informations :
+Data processing was based on the following information :
 
-* The [storm event database] [2], containign entries from 1950 to 2011
+* The [storm event database] [2], containing entries from 1950 to 2011
 * the National Weather Service Storm Data [Documentation] [3]
 * the National Climatic Data Center Storm Events [FAQ] [4]
 
@@ -43,9 +37,9 @@ Data processing was based on the following informations :
 [3]: https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf
 [4]: https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf
 
-# Software
+## Software
 
-Data processing and analysis were performed using R statistical programming software and Rstudio environement.
+Data processing and analysis were performed using R statistical programming software and Rstudio environment.
 
 * Version of R: 3.1.1
 * Version of Rstudio : 0.98.1074
@@ -71,7 +65,7 @@ It is assumed that the data file named *data/repdata_data_StormData.csv.bz2* is 
 folder in R working directory. If it is not the case the file is downloaded. File is then extracted
 and read into R. Extracted file is deleted after reading to save disk space.  
 
-Because the analysis focuses on the impact of storm event on population healt and economy, we only load the variables of interest which are :
+Because the analysis focuses on the impact of storm event on population health and economy, we only load the variables of interest which are :
 
 * the date (BGN_DATE, character)
 * the type of event (EVTYPE, character)
@@ -80,7 +74,7 @@ Because the analysis focuses on the impact of storm event on population healt an
 * the property damage (PROPDMG, numeric and PROPDMGEXP, character)
 * the crop damage (CROPDMG, numeric and CROPDMGEXP, character)
 
-```{r load data}
+```{r load data, cache=TRUE}
 data.file <- "data/repdata_data_StormData.csv.bz2"
 if (!file.exists(data.file)) {
   download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",data.file)
@@ -94,17 +88,17 @@ file.remove("temp.csv")
 
 ## Cleaning and subsetting the dataset
 
-Prior to analysis, the dataset has to be cleaned and subseted, especially :
+Prior to analysis, the dataset has to be cleaned and subset, especially :
 
-1. The event date (BGN_DATE) has to be converted from character to a date format. THis is done as follows :
+1. The event date (BGN_DATE) has to be converted from character to a date format. This is done as follows :
 ```{r convert date}
 data$BGN_DATE <- mdy_hms(data$BGN_DATE)
 ```
 
 2. The event information (variable EVTYPE) contains a number of misspellings, errors, and undefined categories. So events have to be re-mapped to the 48 valid event types according to the specification of NWS Directive 10-1605. For example, an event named "TSTM WIND" is remapped to "Thunderstorm Wind".
-3. Informations regarding damages are split in two variables : a value (PROPDMG,CROPDMG) and an attribute (PROPDMGEXP,CROPDMGEXP). The latter is a character such as "k,h,m,.." standing for Hundred,THounsand,Million, ... or a digit that we assume to be a power of 10 (e.g. "3" stands for Thousand).
+3. Information regarding damages are split in two variables : a value (PROPDMG,CROPDMG) and an attribute (PROPDMGEXP,CROPDMGEXP). The latter is a character such as "k,h,m,.." standing for Hundred,Thousand,Million, ... or a digit that we assume to be a power of 10 (e.g. "3" stands for Thousand).
 
-The following subsection describe in more detail the method used to adress points 2 and 3.
+The following subsection describe in more detail the method used to address points 2 and 3.
 
 ### re-mapping the event names
 
@@ -113,7 +107,7 @@ The following subsection describe in more detail the method used to adress point
 * we put the stream/urban/river- flooding events into the general flood category (since there is no specific category for urban/river/stream-flood)
 * we consider fire caused by lighting as wildfire
 
-For more details informations regarding the classification of event names one can refer to the [documentation] [3] or [severe weather terminology] [5].
+For more details regarding the classification of event names one can refer to the [documentation] [3] or [severe weather terminology] [5].
 
 [5]: http://en.wikipedia.org/wiki/Severe_weather_terminology_%28United_States%29
 
@@ -143,7 +137,7 @@ WINTER WEATHER/MIX (1104 entries), TSTM WIND/HAIL (1028 entries), SNOW (587 entr
 
 ### Computing damage
 
-Damage value and its attribute are gathered into a single value using the function *cleanDamage* below (see comments for more details). The function is called whhen subsetting the dataset (see next step).
+Damage value and its attribute are gathered into a single variable using the function *cleanDamage* below (see comments for more details). The function is called when subsetting the dataset (see next step).
 
 ```{r cleanDamage}
 cleanDamage <- function(dammage,attribute) {
@@ -169,9 +163,9 @@ cleanDamage <- function(dammage,attribute) {
 }
 ```
 
-## Subsetting
+### Subsetting
 
-Last step of the data processing is to subset only the events included in the 48 valid event types according to the specification of NWS Directive 10-1605. Doing this we also define more explicit variable names. This results in the tidy dataset *storm.data*.
+Last step of the data processing is to subset only the events included in the 48 valid event types according to the specification of NWS Directive 10-1605. We also define more explicit variable names. Result is stored in the tidy dataset *storm.data*.
 
 ```{r subset, cache = TRUE}
 valid.events <- c("Astronomical Low Tide","Avalanche","Blizzard","Coastal Flood","Cold/Wind Chill",
@@ -208,7 +202,7 @@ health.data <- storm.data[, list(total.injuries = sum(injuries, na.rm = TRUE),
 setorder(health.data,-total.deaths)
 ```
 
-And we plot the top 5 most harmfull events :
+And we plot the top 5 most harmful events :
 
 ```{r health plot}
 # plot top 5 most harmfull in total death (also plot total injuries)
@@ -230,8 +224,8 @@ g
 
 ```
 
-The graph above shows the 5 most harmull events with respect to the number of deaths.
-The most harmfull storm event is the Tornado, which also display by far the largest total injuries, followed by Heat. Numbers are shown below :
+The graph above shows the 5 most harmful events with respect to the number of deaths.
+The most harmful storm event is the Tornado, which also display by far the largest total injuries, followed by Heat. Numbers are shown below :
 
 ```{r health numbers}
 health.data[1:5,]
@@ -252,7 +246,7 @@ eco.data[,total.damage := total.damage_property + total.damage_crop]
 
 And we plot the cumulative damage for the 5 most costly events :
 
-```{r economy plot}
+```{r economy plot, fig.cap = "caption of the figure"}
 # plot top 5 with the greatest economic consequences
 
 eco.data$event <- as.factor(eco.data$event)
