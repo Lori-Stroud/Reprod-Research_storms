@@ -1,0 +1,282 @@
+---
+title: 'Storm events in the United States : impact on population health and economy'
+author: "Duf59"
+date: "Thursday, December 18, 2014"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+
+Storm events in the United States : impact on population health and economy
+------------------------------------------------------------------------------
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+# synopsis
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalitie.
+Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.  
+
+The present report provides an analysis of storm events in the United States since from 1950 to 2011.
+Data were collected from the U.S. National Oceanic and Atmospheric Administration's (NOAA) [storm database] [1].
+This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.  
+
+The analysis is focused on the impact of storm events on population health and economy.
+By considering the total number of deaths for each type of event, we highlight the 5 most harmful events with respect to population health. Similarly, by considering the comulative economic damage, we highlight the 5 most harmful events with respect to economy. 
+
+The following sections detail the data processing workflow and results.
+
+[1]: http://www.ncdc.noaa.gov/stormevents/
+
+# Data Processing
+
+Data processing was based on the following informations :
+
+* The [storm event database] [2], containign entries from 1950 to 2011
+* the National Weather Service Storm Data [Documentation] [3]
+* the National Climatic Data Center Storm Events [FAQ] [4]
+
+[2]: https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2
+[3]: https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf
+[4]: https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf
+
+# Software
+
+Data processing and analysis were performed using R statistical programming software and Rstudio environement.
+
+* Version of R: 3.1.1
+* Version of Rstudio : 0.98.1074
+* Operating System : Windows 7, SP1, 32 bits
+
+Besides, the following packages ware used : 
+
+* data.table, version 1.9.5
+* R.utils, version 1.34.0
+* lubridate, version 1.3.3
+* ggplot2, version 1.0.0
+
+```{r load packages}
+library(data.table)
+library(R.utils)
+library(lubridate)
+library(ggplot2)
+```
+
+## Loading the data
+
+It is assumed that the data file named *data/repdata_data_StormData.csv.bz2* is located in */data/*
+folder in R working directory. If it is not the case the file is downloaded. File is then extracted
+and read into R. Extracted file is deleted after reading to save disk space.  
+
+Because the analysis focuses on the impact of storm event on population healt and economy, we only load the variables of interest which are :
+
+* the date (BGN_DATE, character)
+* the type of event (EVTYPE, character)
+* the number of deaths (FATALITIES, numeric)
+* the number of injuries (INJURIES, numeric)
+* the property damage (PROPDMG, numeric and PROPDMGEXP, character)
+* the crop damage (CROPDMG, numeric and CROPDMGEXP, character)
+
+```{r load data}
+data.file <- "data/repdata_data_StormData.csv.bz2"
+if (!file.exists(data.file)) {
+  download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",data.file)
+}
+bunzip2(data.file, destname = "temp.csv", remove = FALSE)
+data <- fread("temp.csv", sep = ",", stringsAsFactors = FALSE,
+              colClasses = c("NULL","character",rep("NULL",5),"character", rep("NULL",14),
+                             rep("numeric",3),"character","numeric","character",rep("NULL",9)))
+file.remove("temp.csv")
+```
+
+## Cleaning and subsetting the dataset
+
+Prior to analysis, the dataset has to be cleaned and subseted, especially :
+
+1. The event date (BGN_DATE) has to be converted from character to a date format. THis is done as follows :
+```{r convert date}
+data$BGN_DATE <- mdy_hms(data$BGN_DATE)
+```
+
+2. The event information (variable EVTYPE) contains a number of misspellings, errors, and undefined categories. So events have to be re-mapped to the 48 valid event types according to the specification of NWS Directive 10-1605. For example, an event named "TSTM WIND" is remapped to "Thunderstorm Wind".
+3. Informations regarding damages are split in two variables : a value (PROPDMG,CROPDMG) and an attribute (PROPDMGEXP,CROPDMGEXP). The latter is a character such as "k,h,m,.." standing for Hundred,THounsand,Million, ... or a digit that we assume to be a power of 10 (e.g. "3" stands for Thousand).
+
+The following subsection describe in more detail the method used to adress points 2 and 3.
+
+### re-mapping the event names
+
+* we only re-maps events clearly belonging to a specific valid category (e.g. "TSTM WIND" can be clearly identified to be a "Thunderstorm Wind")
+* we do not re-map events entering several categories such as "TSTM WIND/HAIL" which can go either in "Thunderstorm Wind" or "Hail". Same apply for "FOG" as it could be either dense or freezing fog (same for "snow", "wind", ...)
+* we put the stream/urban/river- flooding events into the general flood category (since there is no specific category for urban/river/stream-flood)
+* we consider fire caused by lighting as wildfire
+
+For more details informations regarding the classification of event names one can refer to the [documentation] [3] or [severe weather terminology] [5].
+
+[5]: http://en.wikipedia.org/wiki/Severe_weather_terminology_%28United_States%29
+
+```{r clean EVTYPE, cache = TRUE}
+data[grep("marine(.*)(tstm|thunderstorm)", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Marine Thunderstorm Wind"
+data[grep("^( ?tstm|(severe )?thunderstorms?)((.*winds?s?)|.*\\d|.*\\)|)$", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Thunderstorm Wind"
+data[grep("^high winds?(| \\d+|/)$", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "High Wind"
+data[grep("fires?", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Wildfire"
+data[grep("(extr|sev|rec|exces|unus|Unseas)(.*)cold(|/wind chill|/frost)$", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Extreme Cold/Wind Chill"
+data[grep("landslide", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Debris Flow"
+data[grep("coastal flood", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Coastal Flood"
+data[grep("^flooding$|stream|^urban|river", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Flood"
+data[grep("^( ?flash|flood|local).*floods?(ing)?/?$",  EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Flash Flood"
+data[grep("^rip currents?$", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Rip Current"
+data[grep("^storm surge?$", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Storm Surge/Tide"
+data[grep("hurricane", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Hurricane (Typhoon)"
+data[grep("^(heavy Surf|high surf)", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "High Surf"
+data[grep("^Strong Winds?$", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Strong Wind"
+data[grep("warm|heat", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Heat"
+data[grep("^(deep |small )?hail.*(damage|\\d+|)$", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Hail"
+data[grep("frost|freeze", EVTYPE,ignore.case = TRUE)]$EVTYPE <- "Frost/Freeze"
+```
+
+The above re-mapping strategies covers more than 99% of the entries.
+The most frequent event that we do not re-map, because they do not clearly belong to a category, are :
+WINTER WEATHER/MIX (1104 entries), TSTM WIND/HAIL (1028 entries), SNOW (587 entries), FOG (538 entries).
+
+### Computing damage
+
+Damage value and its attribute are gathered into a single value using the function *cleanDamage* below (see comments for more details). The function is called whhen subsetting the dataset (see next step).
+
+```{r cleanDamage}
+cleanDamage <- function(dammage,attribute) {
+  # returns the dammage in $ taking into account its attribute which can be :
+  # h = hundred, k = thousand, m = million, b = billion
+  # or a digit n considered as a factor 10^n
+  # if attribute is empty to assume a factor 1
+  #
+  # args: 
+  #   - dammage   : numeric, the dammage values (here PROPDMG or CROPDMG)
+  #   - attribute : character, the dammage attribute (here PROPDMGEXP or CROPDMGEXP)
+  #
+  # Returns: the dammage in dollar
+  #
+  # Exemple : for dammage = 2 and attribute = "k", returns the numeric value 2000.
+  
+  attribute <- gsub("[hH]","2",attribute)
+  attribute <- gsub("[kK]","3",attribute)
+  attribute <- gsub("[mM]","6",attribute)
+  attribute <- gsub("[bB]","9",attribute)
+  attribute <- gsub("^$","0",attribute)
+  dammage*10^as.numeric(attribute)
+}
+```
+
+## Subsetting
+
+Last step of the data processing is to subset only the events included in the 48 valid event types according to the specification of NWS Directive 10-1605. Doing this we also define more explicit variable names. This results in the tidy dataset *storm.data*.
+
+```{r subset, cache = TRUE}
+valid.events <- c("Astronomical Low Tide","Avalanche","Blizzard","Coastal Flood","Cold/Wind Chill",
+                  "Debris Flow","Dense Fog","Dense Smoke","Drought","Dust Devil","Dust Storm",
+                  "Excessive Heat","Extreme Cold/Wind Chill","Flash Flood","Flood","Frost/Freeze",
+                  "Funnel Cloud","Freezing Fog","Hail","Heat","Heavy Rain","Heavy Snow","High Surf",
+                  "High Wind","Hurricane (Typhoon)","Ice Storm","Lake-Effect Snow","Lakeshore Flood",
+                  "Lightning","Marine Hail","Marine High Wind","Marine Strong Wind",
+                  "Marine Thunderstorm Wind","Rip Current","Seiche","Sleet","Storm Surge/Tide",
+                  "Strong Wind","Thunderstorm Wind","Tornado","Tropical Depression","Tropical Storm",
+                  "Tsunami","Volcanic Ash","Waterspout","Wildfire","Winter Storm","Winter Weather")
+
+
+storm.data   <- data[tolower(EVTYPE) %in% tolower(valid.events),
+                     list(event    = EVTYPE,
+                          date     = BGN_DATE,
+                          injuries = INJURIES,
+                          deaths   = FATALITIES,
+                          damage_property = cleanDamage(PROPDMG,PROPDMGEXP),
+                          damage_crop     = cleanDamage(CROPDMG,CROPDMGEXP))]
+```
+
+# Results
+
+## Impact on population health
+
+We first investigate which types of events are most harmful with respect to population health.
+To this end we rank the events according to the total number of deaths (we also look at the total number of injuries) :
+
+```{r health dataset}
+health.data <- storm.data[, list(total.injuries = sum(injuries, na.rm = TRUE),
+                                 total.deaths   = sum(deaths, na.rm = TRUE)),
+                                 by = event]
+setorder(health.data,-total.deaths)
+```
+
+And we plot the top 5 most harmfull events :
+
+```{r health plot}
+# plot top 5 most harmfull in total death (also plot total injuries)
+top5.health.tot <- melt(health.data[1:5,], "event", c("total.injuries","total.deaths"),
+                        variable.name = "type", value.name = "count")
+setorder(top5.health.tot,-type,-count)
+
+g <- ggplot(top5.health.tot,aes(x = factor(event,levels=event),y = count))
+g <- g + geom_bar(aes(fill = type), position = "dodge", stat="identity")
+g <- g + scale_y_log10()
+g <- g + labs(x = "Type of Event",y = "Count")
+g <- g + ggtitle("Top 5 most hamfull events (according to total number of deaths)")
+g <- g + theme(legend.title=element_blank(),
+               plot.title = element_text(lineheight=.8, face="bold", vjust = 2),
+               axis.text.x = element_text(angle = 45, hjust = 1))
+g <- g + scale_fill_discrete(breaks=c("total.injuries", "total.deaths"),
+                             labels=c("Total injuries", "Total deaths"))
+g
+
+```
+
+The graph above shows the 5 most harmull events with respect to the number of deaths.
+The most harmfull storm event is the Tornado, which also display by far the largest total injuries, followed by Heat. Numbers are shown below :
+
+```{r health numbers}
+health.data[1:5,]
+```
+
+## Impact on economy
+
+We then investigate which types of events are most harmful with respect to economy.
+To this end we rank the events according to the cumulative damage (property + crop).
+
+```{r economy dataset}
+eco.data <- storm.data[, list(total.damage_property = sum(damage_property, na.rm = TRUE),
+                              total.damage_crop     = sum(damage_crop, na.rm = TRUE)),
+                       by = event]
+
+eco.data[,total.damage := total.damage_property + total.damage_crop]
+```
+
+And we plot the cumulative damage for the 5 most costly events :
+
+```{r economy plot}
+# plot top 5 with the greatest economic consequences
+
+eco.data$event <- as.factor(eco.data$event)
+eco.data$event <- reorder(eco.data$event, -eco.data$total.damage)
+
+top5.eco.tot <- melt(eco.data[1:5,], "event", c("total.damage_property","total.damage_crop"),
+                        variable.name = "type", value.name = "cost")
+
+g <- ggplot(top5.eco.tot,aes(x = event ,y = cost/1e6))
+g <- g + geom_bar(aes(fill = type), stat="identity")
+g <- g + labs(x = "Type of Event",y = "Damage in Millions of Dollars")
+g <- g + ggtitle("Top 5 events having the greatest economic consequences")
+g <- g + theme(legend.title=element_blank(),
+               plot.title = element_text(lineheight=.8, face="bold", vjust = 2),
+               axis.text.x = element_text(angle = 45, hjust = 1),
+               legend.position="top")
+g <- g + scale_fill_discrete(breaks=c("total.damage_property", "total.damage_crop"),
+                             labels=c("Property damages", "Crop damages"))
+g
+```
+
+From the graph above, we see that the event involving the largest cumulative damage is the Hurricane, Followed by tornado and hail. Numbers are shown below :
+
+```{r economy numbers}
+eco.data[1:5,]
+```
+
