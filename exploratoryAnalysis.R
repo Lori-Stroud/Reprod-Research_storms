@@ -14,13 +14,13 @@ library(ggplot2)
 
 # Load the data ####
 data.file <- "data/repdata_data_StormData.csv.bz2"
-
 if (!file.exists(data.file)) {
   download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",data.file)
 }
-
 bunzip2(data.file, destname = "temp.csv", remove = FALSE)
-data <- fread("temp.csv", sep = ",", stringsAsFactors = FALSE)
+data <- fread("temp.csv", sep = ",", stringsAsFactors = FALSE,
+              colClasses = c("NULL","character",rep("NULL",5),"character", rep("NULL",14),
+                             rep("numeric",3),"character","numeric","character",rep("NULL",9)))
 file.remove("temp.csv")
 
 # Convert dates with lubridate
@@ -125,7 +125,17 @@ cleanDamage <- function(dammage,attribute) {
   dammage*10^as.numeric(attribute)
 }
 
-valid.events <- fread("event types.txt")$EVTYPE  # load list of valid event names
+valid.events <- c("Astronomical Low Tide","Avalanche","Blizzard","Coastal Flood","Cold/Wind Chill",
+                  "Debris Flow","Dense Fog","Dense Smoke","Drought","Dust Devil","Dust Storm",
+                  "Excessive Heat","Extreme Cold/Wind Chill","Flash Flood","Flood","Frost/Freeze",
+                  "Funnel Cloud","Freezing Fog","Hail","Heat","Heavy Rain","Heavy Snow","High Surf",
+                  "High Wind","Hurricane (Typhoon)","Ice Storm","Lake-Effect Snow","Lakeshore Flood",
+                  "Lightning","Marine Hail","Marine High Wind","Marine Strong Wind",
+                  "Marine Thunderstorm Wind","Rip Current","Seiche","Sleet","Storm Surge/Tide",
+                  "Strong Wind","Thunderstorm Wind","Tornado","Tropical Depression","Tropical Storm",
+                  "Tsunami","Volcanic Ash","Waterspout","Wildfire","Winter Storm","Winter Weather")
+
+
 storm.data   <- data[tolower(EVTYPE) %in% tolower(valid.events),
                      list(event    = EVTYPE,
                           date     = BGN_DATE,
@@ -134,16 +144,12 @@ storm.data   <- data[tolower(EVTYPE) %in% tolower(valid.events),
                           damage_property = cleanDamage(PROPDMG,PROPDMGEXP),
                           damage_crop     = cleanDamage(CROPDMG,CROPDMGEXP))]
 
-
 # Analyze the data - part 1 - impact on population health ####
 
 health.data <- storm.data[, list(total.injuries = sum(injuries, na.rm = TRUE),
-                                 total.deaths   = sum(deaths, na.rm = TRUE),
-                                 mean.injuries  = mean(injuries, na.rm = TRUE),
-                                 mean.deaths    = mean(deaths, na.rm = TRUE)),
+                                 total.deaths   = sum(deaths, na.rm = TRUE)),
                                  by = event]
-
-# ORDER BEFORE PICKING THE 5 FIRST !!!!!!
+setorder(health.data,-total.deaths)
 
 # plot top 5 most harmfull in total death (also plot total injuries)
 top5.health.tot <- melt(health.data[1:5,], "event", c("total.injuries","total.deaths"),
@@ -162,43 +168,23 @@ g <- g + scale_fill_discrete(breaks=c("total.injuries", "total.deaths"),
                              labels=c("Total injuries", "Total deaths"))
 g
 
-# plot top 5 most harmfull in mean death (also plot mean injuries)
-top5.health.mean <- melt(health.data[1:5,], "event", c("mean.injuries","mean.deaths"),
-                         variable.name = "type", value.name = "count")
-setorder(top5.health.mean,-type,-count)
 
-g <- ggplot(top5.health.mean,aes(x = factor(event,levels=event),y = count))
-g <- g + geom_bar(aes(fill = type), position = "dodge", stat="identity")
-g <- g + labs(x = "Type of Event",y = "Count")
-g <- g + ggtitle("Top 5 most hamfull events (according to average number of deaths)")
-g <- g + theme(legend.title=element_blank(),
-               plot.title = element_text(lineheight=.8, face="bold", vjust = 2),
-               axis.text.x = element_text(angle = 45, hjust = 1))
-g <- g + scale_fill_discrete(breaks=c("mean.injuries", "mean.deaths"),
-                             labels=c("injuries", "deaths"))
-g
 
 # Analyze the data - part 2 - impact on economy ####
 
 eco.data <- storm.data[, list(total.damage_property = sum(damage_property, na.rm = TRUE),
-                              total.damage_crop     = sum(damage_crop, na.rm = TRUE),
-                              mean.damage_property  = mean(damage_property, na.rm = TRUE),
-                              mean.damage_crop      = mean(damage_crop, na.rm = TRUE)),
+                              total.damage_crop     = sum(damage_crop, na.rm = TRUE)),
                        by = event]
 
 eco.data[,total.damage := total.damage_property + total.damage_crop]
 
-# sort event factor levels with the sum of damages.
+# sort event factor-levels with the sum of damages.
 eco.data$event <- as.factor(eco.data$event)
 eco.data$event <- reorder(eco.data$event, -eco.data$total.damage)
 
 # plot top 5 with the greatest economic consequences
-setorder(eco.data,type,-total.damage)
 top5.eco.tot <- melt(eco.data[1:5,], "event", c("total.damage_property","total.damage_crop"),
                         variable.name = "type", value.name = "cost")
-top5.eco.tot[, total.damage := total.damage_property + total.damage_crop]
-#setorder(top5.eco.tot,type,-cost)
-top5.eco.tot$event <- reorder(top5.eco.tot$event, rowSums(top5.eco.tot[-1]))
 
 g <- ggplot(top5.eco.tot,aes(x = event ,y = cost/1e6))
 g <- g + geom_bar(aes(fill = type), stat="identity")
